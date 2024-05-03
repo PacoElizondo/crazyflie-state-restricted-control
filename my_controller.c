@@ -94,6 +94,8 @@ static float ALPHA[] = {6, 0.005, 8, 0.005};
 // Restrictions
 // to do
 
+
+
 //Struct for logging
 static bool isInit = false;
 
@@ -115,6 +117,8 @@ void controllerOutOfTreeInit() {
     return;
   }
 
+  struct quat unit_q = qeye();
+
   isInit = true;
 }
 
@@ -125,7 +129,11 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
   //To do
   
   
-  
+  struct quat unit_q = qeye();
+  struct vec z_vec = mkvec(0,0,1);
+
+  struct quat orientationError = qeye(); //init
+  struct quat orientationDes = qeye(); //init
 
   float omega[3] = {0};
   omega[0] = radians(sensors->gyro.x);
@@ -142,11 +150,10 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     float thrustDes = 0;
 
 
-    struct quat orientationError = qeye(); //init
-    struct quat orientationDes = qeye(); //init
+
 
     // Current attitude
-    struct quat attitude = mkquat(
+    struct quat orientation = mkquat(
       state->attitudeQuaternion.x,
       state->attitudeQuaternion.y,
       state->attitudeQuaternion.z,
@@ -188,6 +195,13 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     if (norm_trans_control != 0){
       control_direction = vdiv(trans_control,norm_trans_control);
     }
+
+    struct quat curr_thrust_force_vectorq = qqmul(orientation,unit_q);
+    curr_thrust_force_vectorq = qqmul(curr_thrust_force_vectorq,qinv(orientation));
+    struct vec curr_thrust_force_vector = mkvec(curr_thrust_force_vectorq.x, curr_thrust_force_vectorq.y, curr_thrust_force_vectorq.z); //Fth
+    float control_thrust = trans_control.z/curr_thrust_force_vector.z; //Fu
+
+    // orientationDes = control_direction.z
 
     
 
