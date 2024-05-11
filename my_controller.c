@@ -239,8 +239,8 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
 
     if (norm_trans_control != 0){
         control_direction = vdiv(trans_control,norm_trans_control);
-        // trans_control = vscl(THRUST_MAX*tanhf(norm_trans_control/THRUST_MAX), control_direction);
-        trans_control = vdiv(trans_control,vmag(trans_control));
+        trans_control = vscl(THRUST_MAX*tanhf(norm_trans_control/THRUST_MAX), control_direction);
+        control_direction = vdiv(trans_control,norm_trans_control);
     }
 
     // ftyft (fix this you fucking twat )
@@ -252,11 +252,11 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
 
     // desired_orientation = exp(0.5*log(quaternion([dot([0;0;1],control_direction);[cross([0;0;1],control_direction)]]')));
     // desired_orientation = normalize(desired_orientation);
-    struct vec vcross_temp = vcross(z_vec,control_direction);
-    struct quat orientationDes = mkquat(vcross_temp.x,vcross_temp.y,vcross_temp.z,control_direction.z);
-    orientationDes = qinv(orientationDes);
+    struct vec vcross_temp = vneg(vcross(z_vec,control_direction));
+    struct quat orientationDes = mkquat(vcross_temp.x,vcross_temp.y,vcross_temp.z,vdot(z_vec, control_direction));
     orientationDes = mkquat(exp(0.5*log(orientationDes.x)),exp(0.5*log(orientationDes.y)),exp(0.5*log(orientationDes.z)),exp(0.5*log(orientationDes.w)));
     orientationDes = qnormalize(orientationDes);
+
 
     // Orientation error
     // struct quat orientationErrorPrev = load_q_from_array(orientation_error_stored);
