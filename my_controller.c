@@ -70,7 +70,7 @@ static const struct mat33 CRAZYFLIE_INERTIA =
 
 
 static const float THRUST_MIN = 1;
-static const float THRUST_MAX = 18;
+static const float THRUST_MAX = 40;
 static const float ROTATION_MAX = 30;
 
 
@@ -98,21 +98,21 @@ static const float ALPHA[] = {6.0f, 0.005f, 8.0f, 0.005f};
 // Init store variables
 static float pos_error_stored[] = {0.0f, 0.0f, 0.0f};
 static float omega_stored[] = {0.0f, 0.0f, 0.0f};
-static float orientation_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
+// static float orientation_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
 static float orientation_error_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
-static float angular_velocity_stored[] = {0.0f,0.0f,0.0f};
-static float angular_velocity_error_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
+// static float angular_velocity_stored[] = {0.0f,0.0f,0.0f};
+static float angular_velocity_error_stored[] = {0.0f, 0.0f, 0.0f};
 
 //Struct for logging
 static bool isInit = false;
 
 // Auxiliary functions
 //signum
-static inline int sgn(number){
-  if (number < 0) {
+static inline int signum(float n){
+  if (n < 0) {
     return -1;
   }
-  else if (number > 0){
+  else if (n > 0){
     return 1;
   }
   else{
@@ -131,14 +131,14 @@ static inline void store_from_q(struct quat q, float *d) {
 // Quaternion to axis-angle
 static inline struct vec rotvec(struct quat q){
   q = qnormalize(q);
-  // float qv[] = {q.w, q.x, q.y, q.z};
   float ang = 2*acosf(q.w);
   float axis[] = {q.x, q.y, q.z};
   float magnitude = sqrtf(q.x*q.x + q.y*q.y + q.z*q.z);
   float rv[] = {0.0f, 0.0f, 0.0f};
-  for (int i; i < 3; i++){
+  for (int i = 0; i < 3; i++){
     rv[i] = (ang * axis[i]) / magnitude;
   }
+  return mkvec(rv[0],rv[1],rv[2]);
 }
 
 
@@ -146,8 +146,6 @@ void controllerOutOfTreeInit() {
   if (isInit) {
     return;
   }
-
-  struct quat unit_q = qeye();
 
   isInit = true;
 }
@@ -176,7 +174,7 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
       state->attitudeQuaternion.w
     );
 
-    struct vec orientationVector = rotvec(orientation);
+    // struct vec orientationVector = rotvec(orientation);
 
     // Position error
     struct vec posError = mkvec(
@@ -198,27 +196,19 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     float velErrorArray[] = {velError.x, velError.y, velError.z};
 
     // Angular velocity from gyroscope
-    // struct vec angVelocity = mkvec(
-    //   angular_velocity_stored[0] + (omega[0] - omega_stored[0])/DELTA_T,
-    //   angular_velocity_stored[1] + (omega[1] - omega_stored[1])/DELTA_T,
-    //   angular_velocity_stored[2] + (omega[2] - omega_stored[2])/DELTA_T
-    // );
 
-    // omega_stored[0] = omega[0];
-    // omega_stored[1] = omega[1];
-    // omega_stored[2] = omega[2];
+    omega_stored[0] = omega[0];
+    omega_stored[1] = omega[1];
+    omega_stored[2] = omega[2];
 
-    // angular_velocity_stored[0] = angVelocity.x;
-    // angular_velocity_stored[1] = angVelocity.y;
-    // angular_velocity_stored[2] = angVelocity.z;
 
 
     // Angular velocity from attitude state
-    struct quat orientationPrev = load_q_from_array(orientation_stored);
-    struct vec angVelocityVector = vdiv(rotvec(qqmul(orientation,qinv(orientationPrev))),DELTA_T);
-    store_from_q(orientation,orientation_stored);
+    // struct quat orientationPrev = load_q_from_array(orientation_stored);
+    // struct vec angVelocityVector = vdiv(rotvec(qqmul(orientation,qinv(orientationPrev))),DELTA_T);
+    // store_from_q(orientation,orientation_stored);
 
- 
+    
 
 
     
@@ -229,7 +219,7 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     // Translational adaptive gains
     for(int i = 0; i < 3; i++){
       //To do: add restrictions
-      float trans_kp_dot = (LAMBDA[0])*(pos_error_stored[i])*sgn(pos_error_stored[i]) + LAMBDA[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
+      float trans_kp_dot = (LAMBDA[0])*(pos_error_stored[i])*signum(pos_error_stored[i]) + LAMBDA[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
       float trans_kd_dot = LAMBDA[2]*(velErrorArray[i]) + LAMBDA[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
 
       trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
@@ -248,13 +238,16 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     struct vec control_direction = vzero();
 
     if (norm_trans_control != 0){
-      control_direction = vdiv(trans_control,norm_trans_control);
+        control_direction = vdiv(trans_control,norm_trans_control);
+        // trans_control = vscl(THRUST_MAX*tanhf(norm_trans_control/THRUST_MAX), control_direction);
+        trans_control = vdiv(trans_control,vmag(trans_control));
     }
 
+    // ftyft (fix this you fucking twat )
     struct quat curr_thrust_force_vectorq = qqmul(orientation,unit_q);
     curr_thrust_force_vectorq = qqmul(curr_thrust_force_vectorq,qinv(orientation));
     struct vec curr_thrust_force_vector = mkvec(curr_thrust_force_vectorq.x, curr_thrust_force_vectorq.y, curr_thrust_force_vectorq.z); //Fth
-    float control_thrust = trans_control.z/curr_thrust_force_vector.z; //Fu
+    float control_thrust = trans_control.z/vdot(z_vec,curr_thrust_force_vector); //Fu
 
 
     // desired_orientation = exp(0.5*log(quaternion([dot([0;0;1],control_direction);[cross([0;0;1],control_direction)]]')));
@@ -266,26 +259,34 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     orientationDes = qnormalize(orientationDes);
 
     // Orientation error
-    struct quat orientationErrorPrev = load_q_from_array(orientation_error_stored);
+    // struct quat orientationErrorPrev = load_q_from_array(orientation_error_stored);
     struct quat orientationError = qqmul(orientation, qinv(orientationDes));
     orientationError = qnormalize(orientationError);
     store_from_q(orientationError, orientation_error_stored);
 
     // Angular Velocity Error
     struct vec orientationErrorVector = rotvec(orientationError); // Euler angle representation
-    struct vec angVelocityErrorVector = vdiv(rotvec(qqmul(orientationError,qinv(orientationErrorPrev))),DELTA_T);
-    angular_velocity_error_stored[0] = angVelocityErrorVector.x;
-    angular_velocity_error_stored[1] = angVelocityErrorVector.y;
-    angular_velocity_error_stored[2] = angVelocityErrorVector.z;
+    // struct vec angVelocityErrorVector = vdiv(rotvec(qqmul(orientationError,qinv(orientationErrorPrev))),DELTA_T);
+    // angular_velocity_error_stored[0] = angVelocityErrorVector.x;
+    // angular_velocity_error_stored[1] = angVelocityErrorVector.y;
+    // angular_velocity_error_stored[2] = angVelocityErrorVector.z;
+
+
+    //Angular velocity error from gyro
+    struct vec angVelocityErrorVector = mkvec(
+      omega[0] - setpoint->attitudeRate.pitch,
+      omega[1] - setpoint->attitudeRate.roll,
+      omega[2] - setpoint->attitudeRate.yaw
+    );
 
     // Invert reference
-    if (vmag(orientationErrorVector) > M_PI || vmag(orientationErrorVector) < -M_PI){
+    if (vmag(orientationErrorVector) > M_PI_F || vmag(orientationErrorVector) < -M_PI_F){
       orientationDes = qneg(orientationDes);
       orientationError = qqmul(orientationDes,qinv(orientation));
     };
 
     // Rotational adaptive gains
-      for(int i; i < 3; i++){
+      for(int i = 0; i < 3; i++){
       float rot_kp_dot = ALPHA[0]*orientation_error_stored[i] + ALPHA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
       float rot_kd_dot = ALPHA[2]*angular_velocity_error_stored[i] + ALPHA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
 
@@ -299,7 +300,8 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     // orientation_control = (-ang_kp.*orientation_error_vector)-(ang_kd.*angular_velocity_error);
     // torque = INERTIA*(orientation_control + cross(angular_velocity,INERTIA*angular_velocity));
     struct vec orientation_control = vsub(veltmul(vneg(rot_kp_vec),orientationErrorVector),veltmul(rot_kd_vec,angVelocityErrorVector));
-    struct vec control_torque = mvmul(CRAZYFLIE_INERTIA,vadd(orientation_control,vcross(angVelocityVector,mvmul(CRAZYFLIE_INERTIA,angVelocityVector))));
+    // struct vec control_torque = mvmul(CRAZYFLIE_INERTIA,vadd(orientation_control,vcross(angVelocityVector,mvmul(CRAZYFLIE_INERTIA,angVelocityVector))));
+    struct vec control_torque = mvmul(CRAZYFLIE_INERTIA,orientation_control);
 
     // Max and min control
     // 
