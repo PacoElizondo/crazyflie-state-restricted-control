@@ -153,16 +153,22 @@ void controllerOutOfTreeInit() {
 #define UPDATE_RATE RATE_100_HZ
 static const float DELTA_T = 0.01f;
 
-void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const sensorData_t *sensors, const state_t *state, const stabilizerStep_t stabilizerStep) {
+void controllerOutOfTree(control_t *control,
+                          const setpoint_t *setpoint,
+                          const sensorData_t *sensors,
+                          const state_t *state,
+                          const stabilizerStep_t stabilizerStep) {
 
-  struct quat unit_q = qeye();
-  struct vec z_vec = mkvec(0,0,1);
+  // struct quat unit_q = qeye();
+  // struct vec z_vec = mkvec(0,0,1);
 
   float omega[3] = {0};
   omega[0] = radians(sensors->gyro.x);
   omega[1] = radians(sensors->gyro.y);
   omega[2] = radians(sensors->gyro.z);
 
+  static float control_thrust;
+  static struct vec control_torque;
 
   if (RATE_DO_EXECUTE(UPDATE_RATE, stabilizerStep)) {
 
@@ -188,12 +194,12 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     pos_error_stored[2] = posError.z;
 
     // Velocity error
-    struct vec velError = mkvec(
-      state->velocity.x - setpoint->velocity.x,
-      state->velocity.x - setpoint->velocity.y,
-      state->velocity.x - setpoint->velocity.z
-    );
-    float velErrorArray[] = {velError.x, velError.y, velError.z};
+    // struct vec velError = mkvec(
+    //   state->velocity.x - setpoint->velocity.x,
+    //   state->velocity.x - setpoint->velocity.y,
+    //   state->velocity.x - setpoint->velocity.z
+    // );
+    // float velErrorArray[] = {velError.x, velError.y, velError.z};
 
     // Angular velocity from gyroscope
 
@@ -214,49 +220,9 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     
 
 
-    // ------- Translational control -------
-
-    // Translational adaptive gains
-    for(int i = 0; i < 3; i++){
-      //To do: add restrictions
-      float trans_kp_dot = (LAMBDA[0])*(pos_error_stored[i])*signum(pos_error_stored[i]) + LAMBDA[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
-      float trans_kd_dot = LAMBDA[2]*(velErrorArray[i]) + LAMBDA[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
-
-      trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
-      trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
-    };
-    struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
-    struct vec trans_kd_vec = mkvec(trans_kd[0], trans_kd[1], trans_kd[2]);
-
-    // Translational control law equation
-    struct vec trans_control = vadd(
-      veltmul(trans_kp_vec,posError),
-      veltmul(trans_kd_vec,velError)) ;
-    trans_control.z -= GRAVITY_MAGNITUDE;
-    trans_control = vscl(-CF_MASS, trans_control);
-    float norm_trans_control = vmag(trans_control);
-    struct vec control_direction = vzero();
-
-    if (norm_trans_control != 0){
-        control_direction = vdiv(trans_control,norm_trans_control);
-        // trans_control = vscl(THRUST_MAX*tanhf(norm_trans_control/THRUST_MAX), control_direction);
-        trans_control = vdiv(trans_control,vmag(trans_control));
-    }
-
-    // ftyft (fix this you fucking twat )
-    struct quat curr_thrust_force_vectorq = qqmul(orientation,unit_q);
-    curr_thrust_force_vectorq = qqmul(curr_thrust_force_vectorq,qinv(orientation));
-    struct vec curr_thrust_force_vector = mkvec(curr_thrust_force_vectorq.x, curr_thrust_force_vectorq.y, curr_thrust_force_vectorq.z); //Fth
-    float control_thrust = trans_control.z/vdot(z_vec,curr_thrust_force_vector); //Fu
 
 
-    // desired_orientation = exp(0.5*log(quaternion([dot([0;0;1],control_direction);[cross([0;0;1],control_direction)]]')));
-    // desired_orientation = normalize(desired_orientation);
-    struct vec vcross_temp = vcross(z_vec,control_direction);
-    struct quat orientationDes = mkquat(vcross_temp.x,vcross_temp.y,vcross_temp.z,control_direction.z);
-    orientationDes = qinv(orientationDes);
-    orientationDes = mkquat(exp(0.5*log(orientationDes.x)),exp(0.5*log(orientationDes.y)),exp(0.5*log(orientationDes.z)),exp(0.5*log(orientationDes.w)));
-    orientationDes = qnormalize(orientationDes);
+    struct quat orientationDes = qeye();
 
     // Orientation error
     // struct quat orientationErrorPrev = load_q_from_array(orientation_error_stored);
@@ -301,30 +267,31 @@ void controllerOutOfTree(control_t *control, const setpoint_t *setpoint, const s
     // torque = INERTIA*(orientation_control + cross(angular_velocity,INERTIA*angular_velocity));
     struct vec orientation_control = vsub(veltmul(vneg(rot_kp_vec),orientationErrorVector),veltmul(rot_kd_vec,angVelocityErrorVector));
     // struct vec control_torque = mvmul(CRAZYFLIE_INERTIA,vadd(orientation_control,vcross(angVelocityVector,mvmul(CRAZYFLIE_INERTIA,angVelocityVector))));
-    struct vec control_torque = mvmul(CRAZYFLIE_INERTIA,orientation_control);
+    control_torque = mvmul(CRAZYFLIE_INERTIA,orientation_control);
 
     // Max and min control
     // 
-
-    // Control Input
-    if (setpoint->mode.z == modeDisable) {
-    control->thrustSi = 0.0f;
-    control->torque[0] =  0.0f;
-    control->torque[1] =  0.0f;
-    control->torque[2] =  0.0f;
-    } else {
-    // control the body torques
-    control->thrustSi = control_thrust;
-    control->torqueX  = control_torque.x;
-    control->torqueY  = control_torque.y;
-    control->torqueZ  = control_torque.z;
   }
+    // Control Input
+  if (setpoint->mode.z == modeDisable) {
+  control->thrustSi = 0.0f;
+  control->torque[0] =  0.0f;
+  control->torque[1] =  0.0f;
+  control->torque[2] =  0.0f;
+  } else {
+  // control the body torques
+  control_thrust = 0.5f;
+  control->thrustSi = control_thrust;
+  control->torqueX  = control_torque.x;
+  control->torqueY  = control_torque.y;
+  control->torqueZ  = control_torque.z;
+  }  
 
   // todo: reset variables
 
   control->controlMode = controlModeForceTorque;
 
-  }
+
   
 }
 
