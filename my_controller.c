@@ -96,7 +96,7 @@ static const float ALPHA[] = {6.0f, 0.005f, 8.0f, 0.005f};
 
 
 // Init store variables
-static float pos_error_stored[] = {0.0f, 0.0f, 0.0f};
+// static float pos_error_stored[] = {0.0f, 0.0f, 0.0f};
 static float omega_stored[] = {0.0f, 0.0f, 0.0f};
 // static float orientation_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
 static float orientation_error_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -189,9 +189,11 @@ void controllerOutOfTree(control_t *control,
       state->position.z - setpoint->position.z
     );
 
-    pos_error_stored[0] = posError.x;
-    pos_error_stored[1] = posError.y;
-    pos_error_stored[2] = posError.z;
+    // pos_error_stored[0] = posError.x;
+    // pos_error_stored[1] = posError.y;
+    // pos_error_stored[2] = posError.z;
+
+    float posErrorArray[] = {posError.x, posError.y, posError.z};
 
     // Velocity error
     struct vec velError = mkvec(
@@ -199,7 +201,7 @@ void controllerOutOfTree(control_t *control,
       state->velocity.x - setpoint->velocity.y,
       state->velocity.x - setpoint->velocity.z
     );
-    // float velErrorArray[] = {velError.x, velError.y, velError.z};
+    float velErrorArray[] = {velError.x, velError.y, velError.z};
 
     // Angular velocity from gyroscope
 
@@ -217,6 +219,14 @@ void controllerOutOfTree(control_t *control,
     
     // ----- Translational control ------
 
+    for(int i = 0; i < 3; i++){
+      //To do: add restrictions
+      float trans_kp_dot = (LAMBDA[0])*(posErrorArray[i])*signum(posErrorArray[i]) + LAMBDA[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
+      float trans_kd_dot = LAMBDA[2]*(velErrorArray[i]) + LAMBDA[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
+
+      trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
+      trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
+    };
 
     struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
     struct vec trans_kd_vec = mkvec(trans_kd[0], trans_kd[1], trans_kd[2]);
