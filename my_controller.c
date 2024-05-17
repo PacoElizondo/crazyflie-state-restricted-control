@@ -88,7 +88,7 @@ float rot_kd[] = {50.0f,50.0f,50.0f};
 
 
 // Adaptive gains
-static const float LAMBDA[] = {1.5f, 0.005f, 0.05f, 0.005f};
+static const float LAMBDA[] = {2.0f, 0.005f, 1.0f, 0.005f};
 static const float ALPHA[] = {6.0f, 0.005f, 8.0f, 0.005f};
 
 // Restrictions
@@ -141,6 +141,33 @@ static inline struct vec rotvec(struct quat q){
   return mkvec(rv[0],rv[1],rv[2]);
 }
 
+// From: https://la.mathworks.com/help/nav/ref/quaternion.log.html
+static inline struct quat qlog(struct quat q){
+    float norm_v = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);
+    float norm_q = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+    float log_scalar = logf(norm_q);
+    float log_factor = (norm_v != 0) ? acosf(q.w / norm_q) / norm_v : 0;
+    struct quat result;
+    result.w = log_scalar;
+    result.x = log_factor * q.x;
+    result.y = log_factor * q.y;
+    result.z = log_factor * q.z;
+    return result;
+
+}
+
+// exp(q) = exp(a)*( cos(||v||) + (v/||v||)*sin(||v||) )
+static inline struct quat qexp(struct quat q){
+    float norm_v = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);
+    float exp_scalar = expf(q.w) * cosf(norm_v);
+    float exp_factor = (norm_v != 0) ? (expf(q.w) * sinf(norm_v) / norm_v) : 0;
+    struct quat result;
+    result.w = exp_scalar;
+    result.x = exp_factor * q.x;
+    result.y = exp_factor * q.y;
+    result.z = exp_factor * q.z;
+    return result;
+}
 
 void controllerOutOfTreeInit() {
   if (isInit) {
@@ -159,7 +186,7 @@ void controllerOutOfTree(control_t *control,
                           const state_t *state,
                           const stabilizerStep_t stabilizerStep) {
 
-  struct quat unit_q = qeye();
+  struct quat z_q = mkquat(0,0,1,0);
   struct vec z_vec = mkvec(0,0,1);
 
   float omega[3] = {0};
@@ -183,23 +210,24 @@ void controllerOutOfTree(control_t *control,
     // struct vec orientationVector = rotvec(orientation);
 
     // Position error
+    // struct vec posError = mkvec(
+    //   setpoint->position.x - state->position.x,
+    //   setpoint->position.y - state->position.y,
+    //   setpoint->position.z - state->position.z
+    // );
+
     struct vec posError = mkvec(
       state->position.x - setpoint->position.x,
       state->position.y - setpoint->position.y,
       state->position.z - setpoint->position.z
     );
 
-    // pos_error_stored[0] = posError.x;
-    // pos_error_stored[1] = posError.y;
-    // pos_error_stored[2] = posError.z;
-
-    float posErrorArray[] = {posError.x, posError.y, posError.z};
 
     // Velocity error
     struct vec velError = mkvec(
       state->velocity.x - setpoint->velocity.x,
-      state->velocity.x - setpoint->velocity.y,
-      state->velocity.x - setpoint->velocity.z
+      state->velocity.y - setpoint->velocity.y,
+      state->velocity.z - setpoint->velocity.z
     );
     float velErrorArray[] = {velError.x, velError.y, velError.z};
 
@@ -219,15 +247,6 @@ void controllerOutOfTree(control_t *control,
     
     // ----- Translational control ------
 
-    for(int i = 0; i < 3; i++){
-      //To do: add restrictions
-      float trans_kp_dot = (LAMBDA[0])*(posErrorArray[i])*signum(posErrorArray[i]) + LAMBDA[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
-      float trans_kd_dot = LAMBDA[2]*(velErrorArray[i]) + LAMBDA[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
-
-      trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
-      trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
-    };
-
     struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
     struct vec trans_kd_vec = mkvec(trans_kd[0], trans_kd[1], trans_kd[2]);
     struct vec trans_control = vadd(
@@ -244,8 +263,7 @@ void controllerOutOfTree(control_t *control,
       control_direction = vdiv(trans_control,norm_trans_control);
     }
 
-    // ftyft (fix this you fucking twatt )
-    struct quat curr_thrust_force_vectorq = qqmul(orientation,unit_q);
+    struct quat curr_thrust_force_vectorq = qqmul(orientation,z_q);
     curr_thrust_force_vectorq = qqmul(curr_thrust_force_vectorq,qinv(orientation));
     struct vec curr_thrust_force_vector = mkvec(curr_thrust_force_vectorq.x, curr_thrust_force_vectorq.y, curr_thrust_force_vectorq.z); //Fth
     control_thrust = trans_control.z/vdot(z_vec,curr_thrust_force_vector); //Fu
@@ -253,15 +271,19 @@ void controllerOutOfTree(control_t *control,
 
     
 
-    struct vec vcross_temp = vneg(vcross(z_vec,control_direction));
+    struct vec vcross_temp = vcross(z_vec,control_direction);
     struct quat orientationDes = mkquat(vcross_temp.x,vcross_temp.y,vcross_temp.z,vdot(z_vec, control_direction));
-    orientationDes = mkquat(exp(0.5*log(orientationDes.x)),exp(0.5*log(orientationDes.y)),exp(0.5*log(orientationDes.z)),exp(0.5*log(orientationDes.w)));
+    orientationDes = qlog(orientationDes);
+    orientationDes = mkquat(0.5f*orientationDes.x, 0.5f*orientationDes.y, 0.5f*orientationDes.z, 0.5f*orientationDes.w);
+    orientationDes = qexp(orientationDes);
     orientationDes = qnormalize(orientationDes);
 
 
 
 
-    // struct quat orientationDes = qeye();
+    // orientationDes = qeye();
+
+    // control_thrust = 0.5f*posError.z;
 
     // Orientation error
     // struct quat orientationErrorPrev = load_q_from_array(orientation_error_stored);
