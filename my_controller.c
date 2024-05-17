@@ -88,7 +88,7 @@ float rot_kd[] = {50.0f,50.0f,50.0f};
 
 
 // Adaptive gains
-static const float LAMBDA[] = {1.5f, 0.005f, 0.05f, 0.005f};
+static const float LAMBDA[] = {2.0f, 0.005f, 1.0f, 0.005f};
 static const float ALPHA[] = {6.0f, 0.005f, 8.0f, 0.005f};
 
 // Restrictions
@@ -141,16 +141,10 @@ static inline struct vec rotvec(struct quat q){
   return mkvec(rv[0],rv[1],rv[2]);
 }
 
-static inline float qmag(struct quat q){
-  q = qnormalize(q);
-  float magnitude = sqrtf(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
-  return magnitude;
-}
-
 // From: https://la.mathworks.com/help/nav/ref/quaternion.log.html
 static inline struct quat qlog(struct quat q){
     float norm_v = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z);
-    float norm_q = norm(q);
+    float norm_q = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
     float log_scalar = logf(norm_q);
     float log_factor = (norm_v != 0) ? acosf(q.w / norm_q) / norm_v : 0;
     struct quat result;
@@ -216,23 +210,23 @@ void controllerOutOfTree(control_t *control,
     // struct vec orientationVector = rotvec(orientation);
 
     // Position error
+    // struct vec posError = mkvec(
+    //   setpoint->position.x - state->position.x,
+    //   setpoint->position.y - state->position.y,
+    //   setpoint->position.z - state->position.z
+    // );
+
     struct vec posError = mkvec(
-      setpoint->position.x - state->position.x,
-      setpoint->position.y - state->position.y,
-      setpoint->position.z - state->position.z
+      state->position.x - setpoint->position.x,
+      state->position.y - setpoint->position.y,
+      state->position.z - setpoint->position.z
     );
-
-    // pos_error_stored[0] = posError.x;
-    // pos_error_stored[1] = posError.y;
-    // pos_error_stored[2] = posError.z;
-
-    // float posErrorArray[] = {posError.x, posError.y, posError.z};
 
     // Velocity error
     struct vec velError = mkvec(
-      setpoint->velocity.x - state->velocity.x,
-      setpoint->velocity.y - state->velocity.y,
-      setpoint->velocity.z - state->velocity.z
+      state->velocity.x - setpoint->velocity.x,
+      state->velocity.y - setpoint->velocity.y,
+      state->velocity.z - setpoint->velocity.z
     );
     // float velErrorArray[] = {velError.x, velError.y, velError.z};
 
@@ -257,8 +251,8 @@ void controllerOutOfTree(control_t *control,
     struct vec trans_control = vadd(
     veltmul(trans_kp_vec,posError),
     veltmul(trans_kd_vec,velError)) ;
-    trans_control.z = GRAVITY_MAGNITUDE;
-    trans_control = vscl(CF_MASS, trans_control);
+    trans_control.z -= GRAVITY_MAGNITUDE;
+    trans_control = vscl(-CF_MASS, trans_control);
     float norm_trans_control = vmag(trans_control);
     struct vec control_direction = vzero();
 
@@ -279,14 +273,16 @@ void controllerOutOfTree(control_t *control,
     struct vec vcross_temp = vcross(z_vec,control_direction);
     struct quat orientationDes = mkquat(vcross_temp.x,vcross_temp.y,vcross_temp.z,vdot(z_vec, control_direction));
     orientationDes = qlog(orientationDes);
-    orientationDes = mkquat(0.5*orientationDes.x, 0.5*orientationDes.y, 0.5*orientationDes.z, 0.5*orientationDes.w);
+    orientationDes = mkquat(0.5f*orientationDes.x, 0.5f*orientationDes.y, 0.5f*orientationDes.z, 0.5f*orientationDes.w);
     orientationDes = qexp(orientationDes);
     orientationDes = qnormalize(orientationDes);
 
 
 
 
-    // struct quat orientationDes = qeye();
+    // orientationDes = qeye();
+
+    // control_thrust = 0.5f*posError.z;
 
     // Orientation error
     // struct quat orientationErrorPrev = load_q_from_array(orientation_error_stored);
