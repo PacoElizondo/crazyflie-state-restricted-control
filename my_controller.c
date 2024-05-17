@@ -222,13 +222,14 @@ void controllerOutOfTree(control_t *control,
       state->position.z - setpoint->position.z
     );
 
+
     // Velocity error
     struct vec velError = mkvec(
       state->velocity.x - setpoint->velocity.x,
       state->velocity.y - setpoint->velocity.y,
       state->velocity.z - setpoint->velocity.z
     );
-    // float velErrorArray[] = {velError.x, velError.y, velError.z};
+    float velErrorArray[] = {velError.x, velError.y, velError.z};
 
     // Angular velocity from gyroscope
 
