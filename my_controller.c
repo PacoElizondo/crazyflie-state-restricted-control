@@ -75,28 +75,29 @@ static const float ROTATION_MAX = 30;
 
 
 // const gains
-static const float TRANS_KP_FIXED[] = {12.0f,12.0f,12.0f};
-static const float TRANS_KD_FIXED[] = {8.0f,8.0f,8.0f};
+static const float TRANS_KP_FIXED[] = {10.0f,10.0f,10.0f};
+static const float TRANS_KD_FIXED[] = {6.0f,6.0f,6.0f};
 static const float ROT_KP_FIXED[] = {150.0f,150.0f,150.0f};
 static const float ROT_KD_FIXED[] = {50.0f,50.0f,50.0f};
 
 // Dynamic gains
-float trans_kp[] = {12.0f,12.0f,12.0f};
-float trans_kd[] = {8.0f,8.0f,8.0f};
+float trans_kp[] = {10.0f,10.0f,10.0f};
+float trans_kd[] = {6.0f,6.0f,6.0f};
 float rot_kp[] = {150.0f,150.0f,150.0f};
 float rot_kd[] = {50.0f,50.0f,50.0f};
 
 
 // Adaptive gains
-static const float LAMBDA[] = {2.0f, 0.005f, 1.0f, 0.005f};
-static const float ALPHA[] = {6.0f, 0.005f, 8.0f, 0.005f};
+static const float LAMBDA[] = {6.0f, 0.01f, 0.5f, 0.5f};
+static const float ALPHA[] = {4.0f, 0.1f, 5.0f, 0.1f};
 
 // Restrictions
 // to do
 
 
 // Init store variables
-// static float pos_error_stored[] = {0.0f, 0.0f, 0.0f};
+static float pos_error_stored[] = {0.0f, 0.0f, 0.0f};
+static float vel_error_stored[] = {0.0f, 0.0f, 0.0f};
 static float omega_stored[] = {0.0f, 0.0f, 0.0f};
 // static float orientation_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
 static float orientation_error_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -136,7 +137,7 @@ static inline struct vec rotvec(struct quat q){
   float magnitude = sqrtf(q.x*q.x + q.y*q.y + q.z*q.z);
   float rv[] = {0.0f, 0.0f, 0.0f};
   for (int i = 0; i < 3; i++){
-    rv[i] = (ang * axis[i]) / magnitude;
+    rv[i] = (magnitude != 0) ? (ang * axis[i]) / magnitude : 0;
   }
   return mkvec(rv[0],rv[1],rv[2]);
 }
@@ -179,6 +180,7 @@ void controllerOutOfTreeInit() {
 
 #define UPDATE_RATE RATE_100_HZ
 static const float DELTA_T = 0.01f;
+static float t = 0;
 
 void controllerOutOfTree(control_t *control,
                           const setpoint_t *setpoint,
@@ -207,20 +209,15 @@ void controllerOutOfTree(control_t *control,
       state->attitudeQuaternion.w
     );
 
-    // struct vec orientationVector = rotvec(orientation);
-
-    // Position error
-    // struct vec posError = mkvec(
-    //   setpoint->position.x - state->position.x,
-    //   setpoint->position.y - state->position.y,
-    //   setpoint->position.z - state->position.z
-    // );
-
     struct vec posError = mkvec(
       state->position.x - setpoint->position.x,
       state->position.y - setpoint->position.y,
       state->position.z - setpoint->position.z
     );
+
+    pos_error_stored[0] = posError.x;
+    pos_error_stored[1] = posError.y;
+    pos_error_stored[2] = posError.z;
 
 
     // Velocity error
@@ -229,23 +226,27 @@ void controllerOutOfTree(control_t *control,
       state->velocity.y - setpoint->velocity.y,
       state->velocity.z - setpoint->velocity.z
     );
-    float velErrorArray[] = {velError.x, velError.y, velError.z};
-
+    vel_error_stored[0] = velError.x;
+    vel_error_stored[1] = velError.y;
+    vel_error_stored[2] = velError.z;
     // Angular velocity from gyroscope
 
     omega_stored[0] = omega[0];
     omega_stored[1] = omega[1];
     omega_stored[2] = omega[2];
 
-
-
-    // Angular velocity from attitude state
-    // struct quat orientationPrev = load_q_from_array(orientation_stored);
-    // struct vec angVelocityVector = vdiv(rotvec(qqmul(orientation,qinv(orientationPrev))),DELTA_T);
-    // store_from_q(orientation,orientation_stored);
-
+    t += DELTA_T;
     
     // ----- Translational control ------
+
+
+    for(int i = 0; i < 3; i++){
+      float rot_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+      float rot_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
+
+      rot_kp[i] = rot_kp[i] + rot_kp_dot * DELTA_T;
+      rot_kd[i] = rot_kd[i] + rot_kd_dot * DELTA_T;
+    };
 
     struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
     struct vec trans_kd_vec = mkvec(trans_kd[0], trans_kd[1], trans_kd[2]);
@@ -299,7 +300,7 @@ void controllerOutOfTree(control_t *control,
     // angular_velocity_error_stored[2] = angVelocityErrorVector.z;
 
 
-    //Angular velocity error from gyro
+    //Angular velocity error from setpoint
     struct vec angVelocityErrorVector = mkvec(
       omega[0] - setpoint->attitudeRate.pitch,
       omega[1] - setpoint->attitudeRate.roll,
@@ -313,7 +314,7 @@ void controllerOutOfTree(control_t *control,
     };
 
     // Rotational adaptive gains
-      for(int i = 0; i < 3; i++){
+    for(int i = 0; i < 3; i++){
       float rot_kp_dot = ALPHA[0]*orientation_error_stored[i] + ALPHA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
       float rot_kd_dot = ALPHA[2]*angular_velocity_error_stored[i] + ALPHA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
 
