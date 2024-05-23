@@ -88,11 +88,11 @@ float rot_kd[] = {50.0f,50.0f,50.0f};
 
 
 // Adaptive gains
-static const float LAMBDA[] = {0.7f, 0.0075f, 0.5f, 0.5f};
-static const float ALPHA[] = {4.0f, 0.1f, 2.0f, 0.1f};
+static const float LAMBDA[] = {0.7f, 0.01f, 0.5f, 0.5f};
+static const float ALPHA[] = {1.5f, 0.05f, 2.0f, 0.1f};
 
 // Restrictions
-// to do
+// to do 
 
 
 // Init store variables
