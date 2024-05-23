@@ -88,12 +88,13 @@ float rot_kd[] = {50.0f,50.0f,50.0f};
 
 
 // Adaptive gains
-static const float LAMBDA[] = {6.0f, 0.01f, 0.5f, 0.5f};
-static const float ALPHA[] = {4.0f, 0.1f, 5.0f, 0.1f};
+static const float LAMBDA[] = {0.7f, 0.01f, 0.5f, 0.5f};
+static const float ALPHA[] = {1.5f, 0.05f, 2.0f, 0.1f};
 
 // Restrictions
-// to do
-
+static const float RESTRICTION_RADIUS = 0.5f;
+static const float LAMBDA_MAX = 0.5f * 0.5f;
+static const float ORIGIN[] = {1.8, 0.8, 1.0};
 
 // Init store variables
 static float pos_error_stored[] = {0.0f, 0.0f, 0.0f};
@@ -239,13 +240,23 @@ void controllerOutOfTree(control_t *control,
     
     // ----- Translational control ------
 
-
+    float position_x_origin = state->position.x - ORIGIN[0];
+    float position_y_origin = state->position.y - ORIGIN[1];
+    float position_z_origin = state->position.z - ORIGIN[2];
+    float position_origin_norm_squared = (position_x_origin * position_x_origin) + (position_y_origin * position_y_origin) + (position_z_origin * position_z_origin);
+    float trans_kp_dot;
     for(int i = 0; i < 3; i++){
-      float rot_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
-      float rot_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
+      if(i < 2){
+        trans_kp_dot = LAMBDA[0]/(LAMBDA_MAX - position_origin_norm_squared)*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+      }
+      else {
+        trans_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+      }
+      float trans_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
 
-      rot_kp[i] = rot_kp[i] + rot_kp_dot * DELTA_T;
-      rot_kd[i] = rot_kd[i] + rot_kd_dot * DELTA_T;
+      rot_kp[i] = rot_kp[i] + trans_kp_dot * DELTA_T;
+      rot_kd[i] = rot_kd[i] + trans_kd_dot * DELTA_T;
+
     };
 
     struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
