@@ -88,8 +88,8 @@ float rot_kd[] = {50.0f,50.0f,50.0f};
 
 
 // Adaptive gains
-static const float LAMBDA[] = {6.0f, 0.01f, 0.5f, 0.5f};
-static const float ALPHA[] = {4.0f, 0.1f, 5.0f, 0.1f};
+static const float LAMBDA[] = {0.7f, 0.0075f, 0.5f, 0.5f};
+static const float ALPHA[] = {4.0f, 0.1f, 2.0f, 0.1f};
 
 // Restrictions
 // to do
@@ -241,11 +241,11 @@ void controllerOutOfTree(control_t *control,
 
 
     for(int i = 0; i < 3; i++){
-      float rot_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
-      float rot_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
+      float trans_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+      float trans_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
 
-      rot_kp[i] = rot_kp[i] + rot_kp_dot * DELTA_T;
-      rot_kd[i] = rot_kd[i] + rot_kd_dot * DELTA_T;
+      trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
+      trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
     };
 
     struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
