@@ -75,8 +75,8 @@ static const float ROTATION_MAX = 30;
 
 
 // const gains
-static const float TRANS_KP_FIXED[] = {10.0f,10.0f,10.0f};
-static const float TRANS_KD_FIXED[] = {6.0f,6.0f,6.0f};
+static const float TRANS_KP_FIXED[] = {6.0f,6.0f,6.0f};
+static const float TRANS_KD_FIXED[] = {5.0f,5.0f,5.0f};
 static const float ROT_KP_FIXED[] = {150.0f,150.0f,150.0f};
 static const float ROT_KD_FIXED[] = {50.0f,50.0f,50.0f};
 
@@ -88,7 +88,7 @@ float rot_kd[] = {50.0f,50.0f,50.0f};
 
 
 // Adaptive gains
-static const float LAMBDA[] = {0.7f, 0.01f, 0.5f, 0.5f};
+static const float LAMBDA[] = {2.0f, 1.5, 0.5f, 1.0f};
 static const float ALPHA[] = {1.5f, 0.05f, 2.0f, 0.1f};
 
 // Restrictions
@@ -245,17 +245,31 @@ void controllerOutOfTree(control_t *control,
     float position_z_origin = state->position.z - ORIGIN[2];
     float position_origin_norm_squared = (position_x_origin * position_x_origin) + (position_y_origin * position_y_origin) + (position_z_origin * position_z_origin);
     float trans_kp_dot;
+    float trans_kd_dot;
     for(int i = 0; i < 3; i++){
-      if(i < 2){
-        trans_kp_dot = LAMBDA[0]/(LAMBDA_MAX - position_origin_norm_squared)*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+      if(i != 2){
+        trans_kp_dot = (-LAMBDA[0]/(LAMBDA_MAX - position_origin_norm_squared))*pos_error_stored[i]*signum(pos_error_stored[i]) + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+        trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
+        if(trans_kp[i] < 0){
+        trans_kp[i] = 0;
+        }
+        trans_kd_dot = LAMBDA[2]*vel_error_stored[i]*trans_kp_dot + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
+        // else if (trans_kp[i] > TRANS_KP_FIXED[i]){
+        //   trans_kp[i] = TRANS_KP_FIXED[i];
+        // }
       }
       else {
-        trans_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+        trans_kp_dot = LAMBDA[0]*pos_error_stored[i]*trans_kp_dot + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+        trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
+        trans_kd_dot = LAMBDA[2]*vel_error_stored[i]*trans_kp_dot + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
       }
-      float trans_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
+      
+      trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
+      if (trans_kd[i] < 0){
+        trans_kd[i] = 0;
+      }
 
-      rot_kp[i] = rot_kp[i] + trans_kp_dot * DELTA_T;
-      rot_kd[i] = rot_kd[i] + trans_kd_dot * DELTA_T;
+      
 
     };
 
