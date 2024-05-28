@@ -241,8 +241,8 @@ void controllerOutOfTree(control_t *control,
 
 
     for(int i = 0; i < 3; i++){
-      float trans_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
-      float trans_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
+      float trans_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
+      float trans_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
 
       trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
       trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
