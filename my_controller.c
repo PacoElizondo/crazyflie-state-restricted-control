@@ -75,21 +75,21 @@ static const float ROTATION_MAX = 30;
 
 
 // const gains
-static const float TRANS_KP_FIXED[] = {10.0f,10.0f,10.0f};
-static const float TRANS_KD_FIXED[] = {6.0f,6.0f,6.0f};
-static const float ROT_KP_FIXED[] = {150.0f,150.0f,150.0f};
-static const float ROT_KD_FIXED[] = {50.0f,50.0f,50.0f};
+static const float TRANS_KP_FIXED[] = {4.0f,4.0f,4.0f};
+static const float TRANS_KD_FIXED[] = {3.75f,3.75f,3.75f};
+static const float ROT_KP_FIXED[] = {80.0f,80.0f,80.0f};
+static const float ROT_KD_FIXED[] = {30.0f,30.0f,30.0f};
 
 // Dynamic gains
-float trans_kp[] = {10.0f,10.0f,10.0f};
-float trans_kd[] = {6.0f,6.0f,6.0f};
-float rot_kp[] = {150.0f,150.0f,150.0f};
-float rot_kd[] = {50.0f,50.0f,50.0f};
+float trans_kp[] = {4.0f,4.0f,4.0f};
+float trans_kd[] = {3.75f,3.75f,3.75f};
+float rot_kp[] = {80.0f,80.0f,80.0f};
+float rot_kd[] = {30.0f,30.0f,30.0f};
 
 
 // Adaptive gains
-static const float LAMBDA[] = {0.7f, 0.01f, 0.5f, 0.5f};
-static const float ALPHA[] = {1.5f, 0.05f, 2.0f, 0.1f};
+static const float LAMBDA[] = {4.0f, 0.5f, 1.5f, 0.5f};
+static const float ALPHA[] = {3.0f, 0.05f, 1.0f, 0.05f};
 
 // Restrictions
 // to do 
@@ -241,7 +241,7 @@ void controllerOutOfTree(control_t *control,
 
 
     for(int i = 0; i < 3; i++){
-      float trans_kp_dot = LAMBDA[0]*pos_error_stored[i] + LAMBDA[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
+      float trans_kp_dot = LAMBDA[0]*pos_error_stored[i]*signum(pos_error_stored[i]) + LAMBDA[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
       float trans_kd_dot = LAMBDA[2]*vel_error_stored[i] + LAMBDA[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
 
       trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
