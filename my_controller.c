@@ -75,29 +75,32 @@ static const float ROTATION_MAX = 30;
 
 
 // const gains
-static const float TRANS_KP_FIXED[] = {6.0f,6.0f,6.0f};
-static const float TRANS_KD_FIXED[] = {5.0f,5.0f,5.0f};
-static const float ROT_KP_FIXED[] = {150.0f,150.0f,150.0f};
-static const float ROT_KD_FIXED[] = {50.0f,50.0f,50.0f};
+static const float TRANS_KP_FIXED[] = {10.0f,10.0f,7.0f};
+static const float TRANS_KD_FIXED[] = {5.0f,5.0f,3.75f};
+static const float ROT_KP_FIXED[] = {90.0f,90.0f,90.0f};
+static const float ROT_KD_FIXED[] = {40.0f,40.0f,40.0f};
 
 // Dynamic gains
-float trans_kp[] = {10.0f,10.0f,10.0f};
-float trans_kd[] = {6.0f,6.0f,6.0f};
-float rot_kp[] = {150.0f,150.0f,150.0f};
-float rot_kd[] = {50.0f,50.0f,50.0f};
+float trans_kp[] = {10.0f,10.0f,7.0f};
+float trans_kd[] = {5.0f,5.0f,3.75f};
+float rot_kp[] = {90.0f,90.0f,90.0f};
+float rot_kd[] = {40.0f,40.0f,40.0f};
+
 
 
 // Adaptive gains
-static const float LAMBDA[] = {2.0f, 1.5, 0.5f, 1.0f};
-static const float ALPHA[] = {1.5f, 0.05f, 2.0f, 0.1f};
+static const float LAMBDA_RESTRICTION[] = {10.0f, 20.0f};
+static const float LAMBDA[] = {7.0f, 0.75f, 1.5f, 0.5f};
+static const float ALPHA[] = {3.0f, 0.05f, 1.0f, 0.05f};
+
 
 // Restrictions
 static const float RESTRICTION_RADIUS = 0.5f;
 static const float LAMBDA_MAX = 0.5f * 0.5f;
-static const float ORIGIN[] = {1.8, 0.8, 1.0};
+static const float ORIGIN[] = {1.8f, 0.8f, 1.0f};
 
 // Init store variables
-static float pos_error_stored[] = {0.0f, 0.0f, 0.0f};
+// static float pos_error_stored[] = {0.0f, 0.0f, 0.0f};
 static float vel_error_stored[] = {0.0f, 0.0f, 0.0f};
 static float omega_stored[] = {0.0f, 0.0f, 0.0f};
 // static float orientation_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -105,8 +108,13 @@ static float orientation_error_stored[] = {0.0f, 0.0f, 0.0f, 0.0f};
 // static float angular_velocity_stored[] = {0.0f,0.0f,0.0f};
 static float angular_velocity_error_stored[] = {0.0f, 0.0f, 0.0f};
 
+// Input variables
+static float control_thrust;
+static struct vec control_torque;
+
 //Struct for logging
 static bool isInit = false;
+
 
 // Auxiliary functions
 //signum
@@ -197,10 +205,9 @@ void controllerOutOfTree(control_t *control,
   omega[1] = radians(sensors->gyro.y);
   omega[2] = radians(sensors->gyro.z);
 
-  static float control_thrust;
-  static struct vec control_torque;
-
   if (RATE_DO_EXECUTE(UPDATE_RATE, stabilizerStep)) {
+
+    t += DELTA_T;
 
     // Current attitude
     struct quat orientation = mkquat(
@@ -210,17 +217,11 @@ void controllerOutOfTree(control_t *control,
       state->attitudeQuaternion.w
     );
 
-    struct vec posError = mkvec(
-      state->position.x - setpoint->position.x,
-      state->position.y - setpoint->position.y,
-      state->position.z - setpoint->position.z
-    );
-
-    pos_error_stored[0] = posError.x;
-    pos_error_stored[1] = posError.y;
-    pos_error_stored[2] = posError.z;
-
-
+    // Angular velocity from gyroscope
+    omega_stored[0] = omega[0];
+    omega_stored[1] = omega[1];
+    omega_stored[2] = omega[2];
+    
     // Velocity error
     struct vec velError = mkvec(
       state->velocity.x - setpoint->velocity.x,
@@ -230,38 +231,66 @@ void controllerOutOfTree(control_t *control,
     vel_error_stored[0] = velError.x;
     vel_error_stored[1] = velError.y;
     vel_error_stored[2] = velError.z;
-    // Angular velocity from gyroscope
 
-    omega_stored[0] = omega[0];
-    omega_stored[1] = omega[1];
-    omega_stored[2] = omega[2];
-
-    t += DELTA_T;
+    // Position error relative to the origin
+    float position_origin[] = {
+      state->position.x - ORIGIN[0],
+      state->position.y - ORIGIN[1],
+      state->position.z
+    };
+    struct vec position_origin_vec = mkvec(position_origin[0], position_origin[1], position_origin[2]);
     
-    // ----- Translational control ------
+    float desired_position_origin[] = {
+      setpoint->position.x - ORIGIN[0],
+      setpoint->position.y - ORIGIN[1],
+      setpoint->position.z
+    };
+    // struct vec desired_position_origin_vec = mkvec(desired_position_origin[0], desired_position_origin[1], desired_position_origin[2]);
 
-    float position_x_origin = state->position.x - ORIGIN[0];
-    float position_y_origin = state->position.y - ORIGIN[1];
-    float position_z_origin = state->position.z - ORIGIN[2];
-    float position_origin_norm_squared = (position_x_origin * position_x_origin) + (position_y_origin * position_y_origin) + (position_z_origin * position_z_origin);
+    float position_error_origin[] = {
+      position_origin[0] - desired_position_origin[0],
+      position_origin[1] - desired_position_origin[1],
+      position_origin[2] - desired_position_origin[2]
+    };
+
+    struct vec position_error_origin_vec = mkvec(position_error_origin[0], position_error_origin[1], position_error_origin[2]);
+
+    // Position restriction limits
+    float r = (position_origin[0] * position_origin[0]) + (position_origin[1] * position_origin[1]);
+    float rd = (desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1]);
+    float reduction_variable = 0.99f;
+
+    if(r >= RESTRICTION_RADIUS*reduction_variable){
+      float azimuth = atan2f(desired_position_origin[1], desired_position_origin[0]);
+
+      position_origin[0] = RESTRICTION_RADIUS*reduction_variable*cosf(azimuth);
+      position_origin[1] = RESTRICTION_RADIUS*reduction_variable*sinf(azimuth);
+      
+      r = vmag(position_origin_vec);
+      if((RESTRICTION_RADIUS - rd) < -0.2f){
+        position_error_origin[0] = position_origin[0] - RESTRICTION_RADIUS + 0.2f*cosf(azimuth);
+        position_error_origin[1] = position_origin[1] - RESTRICTION_RADIUS + 0.2f*sinf(azimuth);
+
+        position_error_origin_vec.x = position_error_origin[0];
+        position_error_origin_vec.y = position_error_origin[1];
+      }
+    }
+
+    // ----- Translational control ------
+    
     float trans_kp_dot;
     float trans_kd_dot;
     for(int i = 0; i < 3; i++){
       if(i != 2){
-        trans_kp_dot = (-LAMBDA[0]/(LAMBDA_MAX - position_origin_norm_squared))*pos_error_stored[i]*signum(pos_error_stored[i]) + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
+        trans_kp_dot = (-LAMBDA_RESTRICTION[0]/(RESTRICTION_RADIUS - r))*position_error_origin[i]*signum(position_error_origin[i]) + LAMBDA_RESTRICTION[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
         trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
-        if(trans_kp[i] < 0){
-        trans_kp[i] = 0;
-        }
-        trans_kd_dot = LAMBDA[2]*vel_error_stored[i]*trans_kp_dot + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
-        // else if (trans_kp[i] > TRANS_KP_FIXED[i]){
-        //   trans_kp[i] = TRANS_KP_FIXED[i];
-        // }
+        trans_kd_dot = LAMBDA[2]*vel_error_stored[i]*trans_kp_dot + LAMBDA[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
+        
       }
       else {
-        trans_kp_dot = LAMBDA[0]*pos_error_stored[i]*trans_kp_dot + LAMBDA[1]*(ROT_KP_FIXED[i] - rot_kp[i]);
-        trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
-        trans_kd_dot = LAMBDA[2]*vel_error_stored[i]*trans_kp_dot + LAMBDA[3]*(ROT_KD_FIXED[i] - rot_kd[i]);
+        trans_kp_dot = LAMBDA[0]*position_error_origin[2] + LAMBDA[1]*(TRANS_KP_FIXED[2] - trans_kp[2]);
+        trans_kp[2] = trans_kp[2] + trans_kp_dot * DELTA_T;
+        trans_kd_dot = LAMBDA[2]*vel_error_stored[2]*trans_kp_dot + LAMBDA[3]*(TRANS_KD_FIXED[2] - trans_kd[2]);
       }
       
       trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
@@ -269,15 +298,14 @@ void controllerOutOfTree(control_t *control,
         trans_kd[i] = 0;
       }
 
-      
-
     };
 
     struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
     struct vec trans_kd_vec = mkvec(trans_kd[0], trans_kd[1], trans_kd[2]);
     struct vec trans_control = vadd(
-    veltmul(trans_kp_vec,posError),
-    veltmul(trans_kd_vec,velError)) ;
+      veltmul(trans_kp_vec,position_error_origin_vec),
+      veltmul(trans_kd_vec,velError)
+    );
     trans_control.z -= GRAVITY_MAGNITUDE;
     trans_control = vscl(-CF_MASS, trans_control);
     float norm_trans_control = vmag(trans_control);
@@ -384,3 +412,22 @@ void controllerOutOfTree(control_t *control,
 bool controllerOutOfTreeTest(){
   return true;
 }
+
+LOG_GROUP_START(adaptive_control)
+/**
+ * @brief Thrust
+ */
+LOG_ADD(LOG_FLOAT, thrust, &control_thrust)
+/**
+ * @brief Torque x
+ */
+LOG_ADD(LOG_FLOAT, torque_x, &control_torque.x)
+/**
+ * @brief Torque y
+ */
+LOG_ADD(LOG_FLOAT, torque_y, &control_torque.y)
+/**
+ * @brief Torque z
+ */
+LOG_ADD(LOG_FLOAT, torque_z, &control_torque.z)
+LOG_GROUP_STOP(adaptive_control)
