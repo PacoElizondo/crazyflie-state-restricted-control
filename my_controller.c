@@ -78,13 +78,17 @@ static const float ROTATION_MAX = 30;
 
 // const gains
 static const float TRANS_KP_FIXED[] = {7.0f,7.0f,7.0f};
-static const float TRANS_KD_FIXED[] = {3.75f,3.75f,3.75f};
+static const float TRANS_KD_FIXED[] = {4.0f,4.0f,4.0f};
+// static const float TRANS_KP_FIXED[] = {10.0f,10.0f,10.0f};
+// static const float TRANS_KD_FIXED[] = {7.0f,7.0f,7.0f};
 static const float ROT_KP_FIXED[] = {90.0f,90.0f,90.0f};
 static const float ROT_KD_FIXED[] = {40.0f,40.0f,40.0f};
 
 // Dynamic gains
 float trans_kp[] = {7.0f,7.0f,7.0f};
-float trans_kd[] = {3.75f,3.75f,3.75f};
+float trans_kd[] = {4.0f,4.0f,4.0f};
+// float trans_kp[] = {10.0f,10.0f,10.0f};
+// float trans_kd[] = {7.0f,7.0f,7.0f};
 float rot_kp[] = {90.0f,90.0f,90.0f};
 float rot_kd[] = {40.0f,40.0f,40.0f};
 
@@ -93,8 +97,11 @@ float rot_kd[] = {40.0f,40.0f,40.0f};
 // static const float LAMBDA[] = {8.0f, 1.0f, 1.5f, 0.05f};
 // static const float ALPHA[] = {7.0f, 0.2f, 8.0f, 0.25f};
 
-static const float LAMBDA[] = {9.0f, 0.75f, 1.5f, 0.5f};
-static const float ALPHA[] = {3.0f, 0.05f, 1.0f, 0.05f};
+static const float LAMBDA[] = {8.0f, 1.0f, 4.0f, 0.5f};
+static const float ALPHA[] = {2.0f, 0.05f, 1.0f, 0.05f};
+
+// static const float LAMBDA[] = {9.0f, 0.75f, 1.5f, 0.5f};
+// static const float ALPHA[] = {3.0f, 0.05f, 1.0f, 0.05f};
 
 // Restrictions
 // to do 
