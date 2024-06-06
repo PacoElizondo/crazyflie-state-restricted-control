@@ -89,7 +89,7 @@ float rot_kd[] = {40.0f,40.0f,40.0f};
 
 
 // Adaptive gains
-static const float LAMBDA_RESTRICTION[] = {30.0f, 40.0f, 1.5f, 0.5f};
+static const float LAMBDA_RESTRICTION[] = {35.0f, 50.0f, 1.5f, 0.5f};
 static const float LAMBDA_Z[] = {8.0f, 1.0f, 1.5f, 0.5f};
 static const float ALPHA[] = {3.0f, 0.05f, 1.0f, 0.05f};
 
@@ -286,7 +286,7 @@ void controllerOutOfTree(control_t *control,
     }
 
     for(int i = 0; i < 3; i++){
-      vel_error_stored[i] = ((position_error_origin[i] - pos_error_prev[i])/DELTA_T)*0.95f;
+      vel_error_stored[i] = ((position_error_origin[i] - pos_error_prev[i])/DELTA_T)*0.99f;
     }
 
     struct vec velError = mkvec(vel_error_stored[0], vel_error_stored[1], vel_error_stored[2]);
