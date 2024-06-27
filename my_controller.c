@@ -69,9 +69,10 @@ static const struct mat33 CRAZYFLIE_INERTIA =
       {0.72e-6f, 1.8e-6f, 29.3e-6f}}};
 
 
-static const float THRUST_MIN = 1;
-static const float THRUST_MAX = 5;
-static const float ROTATION_MAX = 30;
+static const float THRUST_MIN = 0.15f;
+static const float THRUST_MAX = 30.0f;
+static const float ROTATION_MAX = 0.015f;
+static const float ANGLE_MAX = 0.6f;
 
 
 // const gains
@@ -82,6 +83,7 @@ static const float ROT_KD_FIXED[] = {40.0f,40.0f,40.0f};
 
 // Dynamic gains
 float trans_kp[] = {10.0f,10.0f,7.0f};
+float trans_kp_applied[] = {10.0f, 10.0f, 7.0f};
 float trans_kd[] = {6.0f,6.0f,3.75f};
 float rot_kp[] = {90.0f,90.0f,90.0f};
 float rot_kd[] = {40.0f,40.0f,40.0f};
@@ -89,15 +91,15 @@ float rot_kd[] = {40.0f,40.0f,40.0f};
 
 
 // Adaptive gains
-static const float LAMBDA_RESTRICTION[] = {35.0f, 50.0f, 1.5f, 0.5f};
+static const float LAMBDA_RESTRICTION[] = {1.0f, 20.0f, 1.5f, 0.5f};
 static const float LAMBDA_Z[] = {8.0f, 1.0f, 1.5f, 0.5f};
 static const float ALPHA[] = {3.0f, 0.05f, 1.0f, 0.05f};
 
 
 // Restrictions
-static const float RESTRICTION_RADIUS = 0.5f;
+static const float RESTRICTION_RADIUS = 0.7f;
 static const float LAMBDA_MAX = 0.5f * 0.5f;
-static const float ORIGIN[] = {1.8f, 0.8f, 1.0f};
+static const float ORIGIN[] = {1.8f, 1.0f, 1.0f};
 
 // Init store variables
 static float position_error_origin[] = {0.0f, 0.0f, 0.0f};
@@ -137,6 +139,16 @@ static inline struct quat load_q_from_array(float const *d) {
 
 static inline void store_from_q(struct quat q, float *d) {
 	d[0] = (float)q.x; d[1] = (float)q.y; d[2] = (float)q.z; d[3] = (float)q.w;
+}
+
+static inline float qmag(struct quat q){
+  float norm_q = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+  return norm_q;
+}
+
+static inline struct quat qsmul(struct quat q, float s){
+  struct quat qs = mkquat(q.x*s , q.y*s , q.z*s , q.w*s);
+  return qs;
 }
 
 // Quaternion to axis-angle
@@ -243,7 +255,7 @@ void controllerOutOfTree(control_t *control,
       state->position.y - ORIGIN[1],
       state->position.z
     };
-    struct vec position_origin_vec = mkvec(position_origin[0], position_origin[1], position_origin[2]);
+    
     
     float desired_position_origin[] = {
       setpoint->position.x - ORIGIN[0],
@@ -253,43 +265,61 @@ void controllerOutOfTree(control_t *control,
     // struct vec desired_position_origin_vec = mkvec(desired_position_origin[0], desired_position_origin[1], desired_position_origin[2]);
 
     
-    position_error_origin[0] = position_origin[0] - desired_position_origin[0];
-    position_error_origin[1] = position_origin[1] - desired_position_origin[1];
-    position_error_origin[2] = position_origin[2] - desired_position_origin[2];
-    
-
     struct vec position_error_origin_vec = mkvec(position_error_origin[0], position_error_origin[1], position_error_origin[2]);
 
     // Position restriction limits
-    float r = (position_origin[0] * position_origin[0]) + (position_origin[1] * position_origin[1]);
-    // float rd = (desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1]);
+    float r = sqrt((position_origin[0] * position_origin[0]) + (position_origin[1] * position_origin[1]));
+    float rd = sqrt((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1]));
     float reduction_variable = 0.9999f;
-    float increment_variable = 1.2f;
-    float azimuth = atan2f(desired_position_origin[1], desired_position_origin[0]);
+    float increment_variable = 0.05f;
+    
+    float razimuth = atan2f(position_origin[1], position_origin[0]);
+    float dazimuth = atan2f(desired_position_origin[1], desired_position_origin[0]);
 
     if(r > RESTRICTION_RADIUS*reduction_variable){
-      position_origin[0] = RESTRICTION_RADIUS*reduction_variable*cosf(azimuth);
-      position_origin[1] = RESTRICTION_RADIUS*reduction_variable*sinf(azimuth);
-      r = vmag(position_origin_vec);      
+      position_origin[0] = RESTRICTION_RADIUS*reduction_variable*cosf(razimuth);
+      position_origin[1] = RESTRICTION_RADIUS*reduction_variable*sinf(razimuth);
+      r = sqrt((position_origin[0] * position_origin[0]) + (position_origin[1] * position_origin[1]));
+
     }
-    if (desired_position_origin[0]*signum(desired_position_origin[0]) > 
-        RESTRICTION_RADIUS*cosf(azimuth)*increment_variable*signum(RESTRICTION_RADIUS*cosf(azimuth)*increment_variable)){
-      desired_position_origin[0] = RESTRICTION_RADIUS*cosf(azimuth)*increment_variable;
-      position_error_origin[0] = position_origin[0] - desired_position_origin[0];
-      position_error_origin_vec.x = position_error_origin[0];
+
+    if(rd > RESTRICTION_RADIUS){
+      desired_position_origin[0] = RESTRICTION_RADIUS*cosf(dazimuth) + increment_variable;
+      desired_position_origin[1] = RESTRICTION_RADIUS*sinf(dazimuth) + increment_variable;
+      rd = sqrt((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1]));
     }
-    if (desired_position_origin[1]*signum(desired_position_origin[1]) > 
-        RESTRICTION_RADIUS*sinf(azimuth)*increment_variable*signum(RESTRICTION_RADIUS*sinf(azimuth)*increment_variable)){
-      desired_position_origin[1] = RESTRICTION_RADIUS*cosf(azimuth)*increment_variable;
-      position_error_origin[1] = position_origin[1] - desired_position_origin[1];
-      position_error_origin_vec.y = position_error_origin[1];
-    }
+
+
+
+    
+    // if (desired_position_origin[0]*signum(desired_position_origin[0]) > 
+    //   RESTRICTION_RADIUS*cosf(azimuth)*increment_variable*signum(RESTRICTION_RADIUS*cosf(azimuth))){
+    //   desired_position_origin[0] = RESTRICTION_RADIUS*cosf(azimuth)*increment_variable;
+    //   position_error_origin[0] = position_origin[0] - desired_position_origin[0];
+    //   position_error_origin_vec.x = position_error_origin[0];
+    // }
+    // if (desired_position_origin[1]*signum(desired_position_origin[1]) > 
+    //   RESTRICTION_RADIUS*sinf(azimuth)*increment_variable*signum(RESTRICTION_RADIUS*sinf(azimuth))){
+    //   desired_position_origin[1] = RESTRICTION_RADIUS*cosf(azimuth)*increment_variable;
+    //   position_error_origin[1] = position_origin[1] - desired_position_origin[1];
+    //   position_error_origin_vec.y = position_error_origin[1];
+    // }
+
+    
+
+    position_error_origin[0] = position_origin[0] - desired_position_origin[0];
+    position_error_origin[1] = position_origin[1] - desired_position_origin[1];
+    position_error_origin[2] = position_origin[2] - desired_position_origin[2];
+    position_error_origin_vec = mkvec(position_error_origin[0], position_error_origin[1], position_error_origin[2]);
+
+    
 
     for(int i = 0; i < 3; i++){
       vel_error_stored[i] = ((position_error_origin[i] - pos_error_prev[i])/DELTA_T)*0.99f;
     }
 
     struct vec velError = mkvec(vel_error_stored[0], vel_error_stored[1], vel_error_stored[2]);
+    
     
     
 
@@ -315,10 +345,31 @@ void controllerOutOfTree(control_t *control,
       }
       
       trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
+      if(rd < r && trans_kp[i] < 0){
+        desired_position_origin[0] = RESTRICTION_RADIUS*cosf(dazimuth);
+        desired_position_origin[1] = RESTRICTION_RADIUS*sinf(dazimuth);
+        rd = sqrt((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1])); 
+      }
+
+      if(trans_kp[i] < 1.0f && trans_kp[i] > -1.0f){
+        trans_kp_applied[i] = 1.0f*signum(trans_kp_applied[i]);
+      }
+      else{
+        trans_kp_applied[i] = trans_kp[i];
+      }
+
+      // if(trans_kp_applied[i] < -200.0f){
+      //   trans_kp_applied[i] = -200.0f;
+      // }
+
 
     };
+    position_error_origin[0] = position_origin[0] - desired_position_origin[0];
+    position_error_origin[1] = position_origin[1] - desired_position_origin[1];
+    position_error_origin[2] = position_origin[2] - desired_position_origin[2];
+    position_error_origin_vec = mkvec(position_error_origin[0], position_error_origin[1], position_error_origin[2]);
 
-    struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
+    struct vec trans_kp_vec = mkvec(trans_kp_applied[0], trans_kp_applied[1], trans_kp_applied[2]);
     struct vec trans_kd_vec = mkvec(trans_kd[0], trans_kd[1], trans_kd[2]);
     struct vec trans_control = vadd(
       veltmul(trans_kp_vec,position_error_origin_vec),
@@ -332,14 +383,19 @@ void controllerOutOfTree(control_t *control,
     if (norm_trans_control != 0){
       control_direction = vdiv(trans_control,norm_trans_control);
       trans_control = vscl(THRUST_MAX*tanhf(norm_trans_control/THRUST_MAX), control_direction);
-      control_direction = vdiv(trans_control,norm_trans_control);
     }
+
+    norm_trans_control = vmag(trans_control);
+    control_direction = vdiv(trans_control,norm_trans_control);
+
 
     struct quat curr_thrust_force_vectorq = qqmul(orientation,z_q);
     curr_thrust_force_vectorq = qqmul(curr_thrust_force_vectorq,qinv(orientation));
     struct vec curr_thrust_force_vector = mkvec(curr_thrust_force_vectorq.x, curr_thrust_force_vectorq.y, curr_thrust_force_vectorq.z); //Fth
     control_thrust = trans_control.z/vdot(z_vec,curr_thrust_force_vector); //Fu
-
+    // if (control_thrust < 0.21f){
+    //   control_thrust = 0.21f;
+    // }
 
     
 
@@ -359,6 +415,14 @@ void controllerOutOfTree(control_t *control,
 
     // Orientation error
     // struct quat orientationErrorPrev = load_q_from_array(orientation_error_stored);
+    float orientationDes_norm = qmag(orientationDes);
+    float orientation_norm = qmag(orientation);
+    if (orientationDes_norm > orientation_norm - 0.01f){
+      orientationDes_norm = orientation_norm - 0.01f;
+      orientationDes = qsmul(orientationDes,orientationDes_norm);
+    }
+
+  
     struct quat orientationError = qqmul(orientation, qinv(orientationDes));
     orientationError = qnormalize(orientationError);
     store_from_q(orientationError, orientation_error_stored);
@@ -396,12 +460,33 @@ void controllerOutOfTree(control_t *control,
     struct vec rot_kp_vec = mkvec(rot_kp[0],rot_kp[1],rot_kp[2]);
     struct vec rot_kd_vec = mkvec(rot_kd[0],rot_kd[1],rot_kd[2]);
 
+    // if(vmag(orientationErrorVector) != 0){
+    //   struct vec orientation_direction = vdiv(orientationErrorVector, vmag(orientationErrorVector));
+    //   orientationErrorVector = vscl(ANGLE_MAX*tanhf(vmag(orientationErrorVector)/ANGLE_MAX), orientation_direction);
+    // }
+
     // orientation_control = (-ang_kp.*orientation_error_vector)-(ang_kd.*angular_velocity_error);
     // torque = INERTIA*(orientation_control + cross(angular_velocity,INERTIA*angular_velocity));
     struct vec orientation_control = vsub(veltmul(vneg(rot_kp_vec),orientationErrorVector),veltmul(rot_kd_vec,angVelocityErrorVector));
     // struct vec control_torque = mvmul(CRAZYFLIE_INERTIA,vadd(orientation_control,vcross(angVelocityVector,mvmul(CRAZYFLIE_INERTIA,angVelocityVector))));
-    control_torque = mvmul(CRAZYFLIE_INERTIA,orientation_control);
 
+    // float orientation_control_norm = vmag(orientation_control);
+    // if(orientation_control_norm != 0){
+    //   orientation_control = vscl(ROTATION_MAX*tanhf(orientation_control_norm/ROTATION_MAX),vdiv(orientation_control,orientation_control_norm));
+    // }
+    control_torque = mvmul(CRAZYFLIE_INERTIA,orientation_control);
+    
+    
+    // if(vmag(control_torque) != 0){
+    //   struct vec torque_direction = vdiv(control_torque,vmag(control_torque));
+    //   control_torque = vscl(ROTATION_MAX*tanhf(vmag(control_torque)/ROTATION_MAX), torque_direction);
+    // }
+
+    
+    
+
+    
+    
     // Max and min control
     // 
   }
