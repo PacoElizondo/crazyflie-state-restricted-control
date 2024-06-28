@@ -70,7 +70,7 @@ static const struct mat33 CRAZYFLIE_INERTIA =
 
 
 static const float THRUST_MIN = 0.15f;
-static const float THRUST_MAX = 30.0f;
+static const float THRUST_MAX = 40.0f;
 static const float ROTATION_MAX = 0.015f;
 static const float ANGLE_MAX = 0.6f;
 
@@ -91,13 +91,13 @@ float rot_kd[] = {40.0f,40.0f,40.0f};
 
 
 // Adaptive gains
-static const float LAMBDA_RESTRICTION[] = {1.0f, 20.0f, 1.5f, 0.5f};
+static const float LAMBDA_RESTRICTION[] = {30.0f, 80.0f, 1.5f, 0.5f};
 static const float LAMBDA_Z[] = {8.0f, 1.0f, 1.5f, 0.5f};
 static const float ALPHA[] = {3.0f, 0.05f, 1.0f, 0.05f};
 
 
 // Restrictions
-static const float RESTRICTION_RADIUS = 0.7f;
+static const float RESTRICTION_RADIUS = 0.65f;
 static const float LAMBDA_MAX = 0.5f * 0.5f;
 static const float ORIGIN[] = {1.8f, 1.0f, 1.0f};
 
@@ -268,10 +268,10 @@ void controllerOutOfTree(control_t *control,
     struct vec position_error_origin_vec = mkvec(position_error_origin[0], position_error_origin[1], position_error_origin[2]);
 
     // Position restriction limits
-    float r = sqrt((position_origin[0] * position_origin[0]) + (position_origin[1] * position_origin[1]));
-    float rd = sqrt((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1]));
-    float reduction_variable = 0.9999f;
-    float increment_variable = 0.05f;
+    float r = sqrtf((position_origin[0] * position_origin[0]) + (position_origin[1] * position_origin[1]));
+    float rd = sqrtf((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1]));
+    float reduction_variable = 0.99999f;
+    float increment_variable = 1.07f;
     
     float razimuth = atan2f(position_origin[1], position_origin[0]);
     float dazimuth = atan2f(desired_position_origin[1], desired_position_origin[0]);
@@ -279,14 +279,14 @@ void controllerOutOfTree(control_t *control,
     if(r > RESTRICTION_RADIUS*reduction_variable){
       position_origin[0] = RESTRICTION_RADIUS*reduction_variable*cosf(razimuth);
       position_origin[1] = RESTRICTION_RADIUS*reduction_variable*sinf(razimuth);
-      r = sqrt((position_origin[0] * position_origin[0]) + (position_origin[1] * position_origin[1]));
+      r = sqrtf((position_origin[0] * position_origin[0]) + (position_origin[1] * position_origin[1]));
 
     }
 
     if(rd > RESTRICTION_RADIUS){
-      desired_position_origin[0] = RESTRICTION_RADIUS*cosf(dazimuth) + increment_variable;
-      desired_position_origin[1] = RESTRICTION_RADIUS*sinf(dazimuth) + increment_variable;
-      rd = sqrt((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1]));
+      desired_position_origin[0] = RESTRICTION_RADIUS*cosf(dazimuth)*increment_variable;
+      desired_position_origin[1] = RESTRICTION_RADIUS*sinf(dazimuth)*increment_variable;
+      rd = sqrtf((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1]));
     }
 
 
@@ -329,12 +329,12 @@ void controllerOutOfTree(control_t *control,
     float trans_kd_dot;
     for(int i = 0; i < 3; i++){
       if(i == 0){
-        trans_kp_dot = (-LAMBDA_RESTRICTION[0]/(RESTRICTION_RADIUS - r))*position_error_origin[i]*signum(position_error_origin[i]) + LAMBDA_RESTRICTION[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
+        trans_kp_dot = -((LAMBDA_RESTRICTION[0])/(signum(RESTRICTION_RADIUS - r)*((RESTRICTION_RADIUS - r))))*position_error_origin[i]*signum(position_error_origin[i]) + LAMBDA_RESTRICTION[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
         trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
         trans_kd_dot = LAMBDA_RESTRICTION[2]*vel_error_stored[i] + LAMBDA_RESTRICTION[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
       }
       if(i == 1){
-        trans_kp_dot = (-LAMBDA_RESTRICTION[0]-0.5f/(RESTRICTION_RADIUS - r))*position_error_origin[i]*signum(position_error_origin[i]) + LAMBDA_RESTRICTION[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
+        trans_kp_dot = -((LAMBDA_RESTRICTION[0]-0.01f)/(signum(RESTRICTION_RADIUS - r)*((RESTRICTION_RADIUS - r))))*position_error_origin[i]*signum(position_error_origin[i]) + LAMBDA_RESTRICTION[1]*(TRANS_KP_FIXED[i] - trans_kp[i]);
         trans_kp[i] = trans_kp[i] + trans_kp_dot * DELTA_T;
         trans_kd_dot = LAMBDA_RESTRICTION[2]*vel_error_stored[i] + LAMBDA_RESTRICTION[3]*(TRANS_KD_FIXED[i] - trans_kd[i]);
       }
@@ -346,21 +346,22 @@ void controllerOutOfTree(control_t *control,
       
       trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
       if(rd < r && trans_kp[i] < 0){
-        desired_position_origin[0] = RESTRICTION_RADIUS*cosf(dazimuth);
-        desired_position_origin[1] = RESTRICTION_RADIUS*sinf(dazimuth);
-        rd = sqrt((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1])); 
+        desired_position_origin[0] = RESTRICTION_RADIUS*cosf(dazimuth)*increment_variable;
+        desired_position_origin[1] = RESTRICTION_RADIUS*sinf(dazimuth)*increment_variable;
+        rd = sqrtf((desired_position_origin[0] * desired_position_origin[0]) + (desired_position_origin[1] * desired_position_origin[1])); 
       }
 
-      if(trans_kp[i] < 1.0f && trans_kp[i] > -1.0f){
-        trans_kp_applied[i] = 1.0f*signum(trans_kp_applied[i]);
+      if(trans_kp[i] < 0.05f && trans_kp[i] > -0.05f){
+        trans_kp_applied[i] = 0.05f*signum(trans_kp_applied[i]);
       }
       else{
         trans_kp_applied[i] = trans_kp[i];
       }
 
-      // if(trans_kp_applied[i] < -200.0f){
-      //   trans_kp_applied[i] = -200.0f;
+      // if(trans_kp_applied[i] < -0.5f){
+      //   trans_kp_applied[i] = -0.5f;
       // }
+      trans_kp_applied[i] = trans_kp[i];
 
 
     };
@@ -398,6 +399,10 @@ void controllerOutOfTree(control_t *control,
     // }
 
     
+    // if (control_thrust < 0.0f){
+    //   control_thrust = 0.21f;
+    //   control_direction = z_vec;
+    // }
 
     struct vec vcross_temp = vcross(z_vec,control_direction);
     struct quat orientationDes = mkquat(vcross_temp.x,vcross_temp.y,vcross_temp.z,vdot(z_vec, control_direction));
@@ -417,8 +422,8 @@ void controllerOutOfTree(control_t *control,
     // struct quat orientationErrorPrev = load_q_from_array(orientation_error_stored);
     float orientationDes_norm = qmag(orientationDes);
     float orientation_norm = qmag(orientation);
-    if (orientationDes_norm > orientation_norm - 0.01f){
-      orientationDes_norm = orientation_norm - 0.01f;
+    if (orientationDes_norm > orientation_norm-0.1f){
+      orientationDes_norm = orientation_norm-0.1f;
       orientationDes = qsmul(orientationDes,orientationDes_norm);
     }
 
