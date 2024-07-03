@@ -65,7 +65,7 @@ void appMain() {
 
 // CONSTANTS
 
-static const struct mat33 CRAZYFLIE_INERTIA =
+const struct mat33 CRAZYFLIE_INERTIA =
     {{{16.6e-6f, 0.83e-6f, 0.72e-6f},
       {0.83e-6f, 16.6e-6f, 1.8e-6f},
       {0.72e-6f, 1.8e-6f, 29.3e-6f}}};
@@ -79,8 +79,6 @@ static const float ROTATION_MAX = 30;
 // const gains
 static const float TRANS_KP_FIXED[] = {7.0f,7.0f,7.0f};
 static const float TRANS_KD_FIXED[] = {4.0f,4.0f,4.0f};
-// static const float TRANS_KP_FIXED[] = {10.0f,10.0f,10.0f};
-// static const float TRANS_KD_FIXED[] = {7.0f,7.0f,7.0f};
 static const float ROT_KP_FIXED[] = {90.0f,90.0f,90.0f};
 static const float ROT_KD_FIXED[] = {40.0f,40.0f,40.0f};
 
@@ -91,6 +89,10 @@ float trans_kd[] = {4.0f,4.0f,4.0f};
 // float trans_kd[] = {7.0f,7.0f,7.0f};
 float rot_kp[] = {90.0f,90.0f,90.0f};
 float rot_kd[] = {40.0f,40.0f,40.0f};
+
+static float kp_x;
+static float kp_y;
+static float kp_z;
 
 
 // Adaptive gains
@@ -263,6 +265,8 @@ void controllerOutOfTree(control_t *control,
       trans_kd[i] = trans_kd[i] + trans_kd_dot * DELTA_T;
     };
 
+    kp_x = trans_kp[0]; kp_y = trans_kp[1]; kp_z = trans_kp[2];
+
     struct vec trans_kp_vec = mkvec(trans_kp[0], trans_kp[1], trans_kp[2]);
     struct vec trans_kd_vec = mkvec(trans_kd[0], trans_kd[1], trans_kd[2]);
     struct vec trans_control = vadd(
@@ -365,6 +369,18 @@ LOG_GROUP_START(adaptive_control)
  * @brief Thrust
  */
 LOG_ADD(LOG_FLOAT, thrust, &control_thrust)
+/**
+ * @brief Trans kp x
+ */
+LOG_ADD(LOG_FLOAT, trans_x, &kp_x)
+/**
+ * @brief Trans kp y
+ */
+LOG_ADD(LOG_FLOAT, trans_y, &kp_y)
+/**
+ * @brief Trans kp y
+ */
+LOG_ADD(LOG_FLOAT, trans_z, &kp_z)
 /**
  * @brief Torque x
  */
