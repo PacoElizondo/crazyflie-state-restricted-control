@@ -99,7 +99,7 @@ static float kp_z;
 // static const float LAMBDA[] = {8.0f, 1.0f, 1.5f, 0.05f};
 // static const float ALPHA[] = {7.0f, 0.2f, 8.0f, 0.25f};
 
-static const float LAMBDA[] = {8.0f, 3.0f, 4.0f, 0.40f};
+static const float LAMBDA[] = {8.0f, 3.15f, 4.0f, 0.40f};
 static const float ALPHA[] = {2.0f, 0.05f, 1.0f, 0.05f};
 
 // static const float LAMBDA[] = {9.0f, 0.75f, 1.5f, 0.5f};
