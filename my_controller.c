@@ -77,14 +77,14 @@ static const float ROTATION_MAX = 30;
 
 
 // const gains
-static const float TRANS_KP_FIXED[] = {7.0f,7.0f,7.0f};
-static const float TRANS_KD_FIXED[] = {4.0f,4.0f,4.0f};
+static const float TRANS_KP_FIXED[] = {16.0f,16.0f,12.0f};
+static const float TRANS_KD_FIXED[] = {12.0f,12.0f,5.0f};
 static const float ROT_KP_FIXED[] = {90.0f,90.0f,90.0f};
 static const float ROT_KD_FIXED[] = {40.0f,40.0f,40.0f};
 
 // Dynamic gains
-float trans_kp[] = {7.0f,7.0f,7.0f};
-float trans_kd[] = {4.0f,4.0f,4.0f};
+float trans_kp[] = {16.0f,16.0f,12.0f};
+float trans_kd[] = {12.0f,12.0f,5.0f};
 // float trans_kp[] = {10.0f,10.0f,10.0f};
 // float trans_kd[] = {7.0f,7.0f,7.0f};
 float rot_kp[] = {90.0f,90.0f,90.0f};
@@ -99,7 +99,7 @@ static float kp_z;
 // static const float LAMBDA[] = {8.0f, 1.0f, 1.5f, 0.05f};
 // static const float ALPHA[] = {7.0f, 0.2f, 8.0f, 0.25f};
 
-static const float LAMBDA[] = {8.0f, 1.0f, 4.0f, 0.5f};
+static const float LAMBDA[] = {8.0f, 3.0f, 4.0f, 0.40f};
 static const float ALPHA[] = {2.0f, 0.05f, 1.0f, 0.05f};
 
 // static const float LAMBDA[] = {9.0f, 0.75f, 1.5f, 0.5f};
@@ -139,6 +139,16 @@ static inline int signum(float n){
   else{
   return 0;
   }
+}
+
+static inline float qmag(struct quat q){
+  float norm_q = sqrtf(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+  return norm_q;
+}
+
+static inline struct quat qsmul(struct quat q, float s){
+  struct quat qs = mkquat(q.x*s , q.y*s , q.z*s , q.w*s);
+  return qs;
 }
 
 static inline struct quat load_q_from_array(float const *d) {
@@ -299,9 +309,20 @@ void controllerOutOfTree(control_t *control,
     orientationDes = qnormalize(orientationDes);
 
     // Orientation error
+
+    float orientationDes_norm = qmag(orientationDes);
+    float orientation_norm = qmag(orientation);
+    if (orientationDes_norm > orientation_norm-0.1f){
+      orientationDes_norm = orientation_norm-0.1f;
+      orientationDes = qsmul(orientationDes,orientationDes_norm);
+    }
+
+  
     struct quat orientationError = qqmul(orientation, qinv(orientationDes));
     orientationError = qnormalize(orientationError);
     store_from_q(orientationError, orientation_error_stored);
+
+
 
     // Angular Velocity Error
     struct vec orientationErrorVector = rotvec(orientationError); // Euler angle representation
